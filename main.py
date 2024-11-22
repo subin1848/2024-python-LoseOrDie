@@ -1,125 +1,153 @@
-import random
 import pygame
+from src.settings import *
+from src.utils import load_json_data, draw_text_with_outline, show_combo_effect
+from src.food import spawn_food, load_images
+from src.character import Character
+from src.menu import main_menu
+from src.popup import show_popup
+from src.game_logic import handle_collisions, fade_in_out, next_round
 
-from src import WIDTH, HEIGHT, FPS, BACKGROUND_IMAGES
-
+# 초기 설정
 pygame.init()
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("빼지 못하면 죽음 뿐")
 clock = pygame.time.Clock()
 
-# 폰트 초기화
-font = pygame.font.SysFont('Noto Sans', 24)
+# 배경 이미지 로드
+background_imgs = [
+    pygame.transform.scale(pygame.image.load(img_path), (WIDTH, HEIGHT)) for img_path in BACKGROUND_IMAGES
+]
 
-#TODO: 이 함수 찾아보기
-def scale_background_image(image, width, height):
-    img_width, img_height = image.get_size()
-    aspect_ratio = img_width / img_height
+# JSON 데이터 로드
+food_to_avoid = load_json_data("assets/data/foodToAvoid.json")
+food_to_eat = load_json_data("assets/data/foodToEat.json")
 
-    if width / height > aspect_ratio:
-        new_width = height * aspect_ratio
-        new_height = height
-    else:
-        new_width = width
-        new_height = width / aspect_ratio
+images_foodToEat = load_images(food_to_eat, "assets/1Round/foodToEat")
+images_foodToAvoid = load_images(food_to_avoid, "assets/1Round/foodToAvoid")
 
-    return pygame.transform.scale(image, (int(new_width), int(new_height)))
-#TODO: 이 함수 찾아보기
-def draw_rounded_rect(surface, color, rect, radius):
-    x, y, width, height = rect
+# 캐릭터 초기화
+character = Character(375, 450)
+good_face_duration = 300
+good_face_timer = 0
 
-    # 사각형 그리기
-    pygame.draw.rect(surface, color, (x + radius, y, width - 2 * radius, height))
-    pygame.draw.rect(surface, color, (x, y + radius, width, height - 2 * radius))
+# 메인 메뉴 실행
+main_menu(screen, background_imgs[0], clock)
 
-    # 둥근 모서리 그리기
-    pygame.draw.circle(surface, color, (x + radius, y + radius), radius)
-    pygame.draw.circle(surface, color, (x + width - radius, y + radius), radius)
-    pygame.draw.circle(surface, color, (x + radius, y + height - radius), radius)
-    pygame.draw.circle(surface, color, (x + width - radius, y + height - radius), radius)
+# 라운드 정보 초기화
+rounds = [{"round": i, "required_food": food_to_eat, "avoid_food": food_to_avoid} for i in range(1, 4)]
+current_round = 0
+foods = []
+game_data = {"eaten_food_count": 0, "eaten_foods": [], "score": 0, "lives": 3, "combo_count" : 0, "last_good_food_time" : 0}
 
-# 초기 라운드 설정
-current_round = 1
-background_image = scale_background_image(pygame.image.load(BACKGROUND_IMAGES[current_round]), WIDTH, HEIGHT)
+# 라운드 루프
+while current_round < len(rounds):
+    # 배경 이미지 설정 (현재 라운드에 맞는 배경으로 설정)
+    current_background = background_imgs[current_round + 1]  # +1을 추가하여 gym.png부터 시작
 
-# 1라운드(헬스장) 먹어야될 음식, 먹으면 안될 음식
-food_to_eat = ["닭가슴살", "고구마", "단백질 쉐이크", "삶은 계란", "아몬드", "단백질 바"]
-food_to_avoid = "탄산음료"
+    # 라운드 시작 시 음식 생성 주기 조정
+    if current_round > 0:  # 첫 번째 라운드는 기본 주기 사용
+        SPAWN_INTERVAL = max(MIN_SPAWN_INTERVAL, SPAWN_INTERVAL - 50)
 
-# 음식 배열
-eaten_food = []
+    # 라운드 시작 텍스트
+    font = pygame.font.Font(FONT_PATH_SUBTITLE, FONT_SIZE_SUBTITLE)
+    font2 = pygame.font.Font(FONT_PATH_TITLE, FONT_SIZE_TITLE)
 
-# 먹은 음식 수
-eaten_food_count = 0
-
-# 랜덤 음식 3개
-must_eat_food = random.sample(food_to_eat, 3)
-
-# 라운드 시간 설정
-timer_limit = 40
-start_time = pygame.time.get_ticks()
-
-# 게임루프
-running = True
-while running:
-    # 이벤트 처리
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
-
-    current_time = (pygame.time.get_ticks() - start_time) / 1000
-
-    # 게임 로직 업데이트
-    if current_time < timer_limit:
-        # TODO: 사용자가 음식을 먹을 때 호출되는 로직 추가
-        keys = pygame.key.get_pressed()
-        # 사용자가 음식을 먹음
-        if keys[pygame.K_UP]:
-            food = random.choice(food_to_eat + [food_to_avoid])
-            eaten_food.append(food)
-            # 먹어야 할 음식, 먹으면 안되는 음식 카운트 증가
-            if food == food_to_eat:
-                eaten_food_count += 1
-            if food == food_to_avoid:
-                running = False
-
-    else:
-        # 제한 시간이 끝났을 때 라운드 증가
-        if eaten_food_count >= 3:
-            current_round += 1
-            # 다음 라운드의 인덱스를 계산
-            next_round_index = (current_round % len(BACKGROUND_IMAGES))
-            background_image = pygame.image.load(BACKGROUND_IMAGES[next_round_index], WIDTH, HEIGHT)
-            eaten_food_count = 0
-            eaten_food.clear()
-            start_time = pygame.time.get_ticks()
-        else:
-            running = False
-
-    screen.fill((0, 0, 0))  # 화면을 검은색으로 초기화
-    screen.blit(background_image, (0, 0))  # 배경 이미지 그리기
-
-    # 랜덤 음식 보여주는 박스 그리기
-    box_width = 680
-    box_height = 360
-    box_x = (WIDTH - box_width) // 2
-    box_y = (HEIGHT - box_height) // 2
-    box_radius = 20
-
-    draw_rounded_rect(screen, (255, 255, 255), (box_x, box_y, box_width, box_height), box_radius)
-
-    # 먹어야 할 음식 텍스트
-    must_eat_food_text = "먹어야 할 음식: " + ", " .join(must_eat_food);
-    avoid_food_text = "먹으면 안되는 음식: " + food_to_avoid
-
-    # 텍스트 렌더링
-    must_eat_surface = font.render(must_eat_food_text, True, (0,0,0))
-    avoid_food_surface = font.render(avoid_food_text, True, (255,0,0))
-    # 텍스트 위치 설정
-    screen.blit(must_eat_surface, (box_x + 10, box_y + 10))
-    screen.blit(avoid_food_surface, (box_x + 10, box_y + 40))
-
+    round_text = f"Round {current_round + 1}"
+    screen.blit(current_background, (0, 0))
+    draw_text_with_outline(screen, round_text, font, WHITE, BLACK,
+                           WIDTH // 2 - font.size(round_text)[0] // 2,
+                           HEIGHT // 2 - 50)
     pygame.display.flip()
-    clock.tick(FPS)
+    pygame.time.wait(3000)
+
+    # 팝업 표시
+    show_popup(screen, rounds[current_round], clock)
+
+    # 게임 플레이 루프
+    running = True
+    combo_timer = 0     # 콤보 아직 시작 안함
+    COMBO_TIMEOUT = 2000
+
+    while running:
+        current_time = pygame.time.get_ticks()
+        screen.blit(current_background, (0, 0))
+
+        # 이벤트 처리
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                exit()
+
+        # 키 입력 처리 및 캐릭터 이동
+        keys = pygame.key.get_pressed()
+        character.move(keys)
+
+        # 음식 생성
+        if current_time % SPAWN_INTERVAL == 0:
+            foods.append(spawn_food(food_to_eat, food_to_avoid, images_foodToEat, images_foodToAvoid))
+
+        # 캐릭터 및 음식 표시
+        character.draw(screen)
+        for food in foods[:]:
+            food.update()
+            food.draw(screen)
+            if food.rect.top > HEIGHT:
+                foods.remove(food)
+
+        # 충돌 처리
+        game_continues, good_food_eaten = handle_collisions(character, foods, game_data)
+        if good_food_eaten:
+            game_data["combo_count"] += 1
+            character.set_image("assets/character/good_face.png")
+            combo_timer = current_time
+            good_face_timer = current_time
+
+            if game_data["combo_count"] >= 2:
+                show_combo_effect(screen, game_data["combo_count"], font2, clock, current_background)
+        elif current_time - combo_timer > COMBO_TIMEOUT:
+            game_data["combo_count"] = 0
+
+            # good face 표시 시간 체크 및 기본 이미지로 복원
+            if good_face_timer > 0 and current_time - good_face_timer >= good_face_duration:
+                character.set_image("assets/character/base_face.png")  # 기본 이미지로 복원
+                good_face_timer = 0  # 타이머 리셋
+
+        if not game_continues:
+            running = False
+            # 게임 오버 처리
+            game_over_text = "Game Over"
+            draw_text_with_outline(screen, game_over_text, font, RED, BLACK,
+                                   WIDTH // 2 - font.size(game_over_text)[0] // 2,
+                                   HEIGHT // 2 - font.size(game_over_text)[1] // 2)
+            pygame.display.flip()
+            pygame.time.wait(3000)
+            break
+
+        # 라운드 완료 조건 확인
+        if game_data["eaten_food_count"] >= len(rounds[current_round]["required_food"]):
+            current_round += 1
+            if current_round >= len(rounds):
+                game_clear_text = "Game Clear!"
+                draw_text_with_outline(screen, game_clear_text, font, WHITE, BLACK,
+                                       WIDTH // 2 - font.size(game_clear_text)[0] // 2,
+                                       HEIGHT // 2 - font.size(game_clear_text)[1] // 2)
+                pygame.display.flip()
+                pygame.time.wait(3000)
+            else:
+                foods.clear()  # 다음 라운드를 위해 음식 초기화
+                game_data["eaten_food_count"] = 0  # 다음 라운드를 위해 초기화
+                game_data["eaten_foods"] = []  # 다음 라운드를 위해 초기화
+            break
+
+        # 점수 및 생명 표시 (테두리 추가)
+        draw_text_with_outline(screen, f"Round {current_round + 1}", font, WHITE, BLACK, 10, 10)
+        draw_text_with_outline(screen, f"Score: {game_data['score']}", font2, WHITE, BLACK, 10, 60)
+        draw_text_with_outline(screen, f"Lives: {game_data['lives']}", font2, WHITE, BLACK,
+                               WIDTH - font.size(f"Lives: {game_data['lives']}")[0] - 10, 10)
+        draw_text_with_outline(screen, f"Combo: {game_data['combo_count']}", font2, WHITE, BLACK, 10, 110)
+        pygame.display.flip()
+        clock.tick(FPS)
+
+    if not game_continues:
+        break  # 게임 오버시 전체 게임 루프 종료
 
 pygame.quit()
