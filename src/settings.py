@@ -30,6 +30,5 @@ BACKGROUND_IMAGES = [
     "assets/background/main.png",
     "assets/background/gym.png",
     "assets/background/myHome.png",
-    "assets/background/date2_movie.png",
-    "assets/background/date3_picnic.png"
+    "assets/background/date2_movie.png"
 ]
